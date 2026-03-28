@@ -1,0 +1,64 @@
+name: Frontle Social Agent
+
+on:
+  schedule:
+    # 9am CST = 15:00 UTC
+    - cron: '0 15 * * *'
+    # 1pm CST = 19:00 UTC
+    - cron: '0 19 * * *'
+    # 6pm CST = 00:00 UTC (next day)
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # allows manual trigger from GitHub UI
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write config from secrets
+        run: |
+          cat > config.py << 'EOF'
+          GEMINI_API_KEY = "${{ secrets.GEMINI_API_KEY }}"
+          STABILITY_API_KEY = "${{ secrets.STABILITY_API_KEY }}"
+          TWITTER_API_KEY = "${{ secrets.TWITTER_API_KEY }}"
+          TWITTER_API_SECRET = "${{ secrets.TWITTER_API_SECRET }}"
+          TWITTER_ACCESS_TOKEN = "${{ secrets.TWITTER_ACCESS_TOKEN }}"
+          TWITTER_ACCESS_SECRET = "${{ secrets.TWITTER_ACCESS_SECRET }}"
+
+          APP_NAME = "Frontle"
+          APP_URL = "https://frontle.com"
+          SUBPRIME_URL = "https://prime.frontle.com"
+          SWITCH_URL = "https://prime.frontle.com/switch"
+
+          PRODUCTS = {
+              "dealership": {
+                  "name": "Frontle",
+                  "url": "https://frontle.com",
+                  "hook": "save money at the dealership"
+              },
+              "subprime": {
+                  "name": "Frontle Prime",
+                  "url": "https://prime.frontle.com",
+                  "hook": "get the best deal even with bad credit"
+              },
+              "switch": {
+                  "name": "Frontle Switch",
+                  "url": "https://prime.frontle.com/switch",
+                  "hook": "lower your car payment by switching vehicles"
+              }
+          }
+          EOF
+
+      - name: Run agent
+        run: python agent.py
