@@ -17,7 +17,7 @@ twitter = tweepy.Client(
     access_token_secret=config.TWITTER_ACCESS_SECRET
 )
 
-# Setup Reddit (optional — skipped if credentials not set)
+# Setup Reddit (optional)
 reddit = None
 try:
     import praw
@@ -75,15 +75,158 @@ Topic ideas to pick from:
     return response.text.strip()
 
 
+def generate_social_caption(product_key):
+    """Longer caption for Facebook/Instagram."""
+    product = config.PRODUCTS[product_key]
+    tones = ["bold and honest", "helpful and educational", "relatable and conversational"]
+    tone = random.choice(tones)
+
+    prompt = f"""
+You are a social media expert for {config.APP_NAME}, an app that helps car buyers.
+
+Write a {tone} Facebook/Instagram caption about how {product['name']} helps people {product['hook']}.
+
+Rules:
+- 3-5 sentences max
+- End with this URL: {product['url']}
+- Include 3-5 relevant hashtags at the end
+- Do NOT use quotes around the caption
+- Output only the caption text, nothing else
+
+Topic ideas:
+- Dealerships markup prices by thousands
+- Finance managers are trained to upsell you
+- Your credit score doesn't have to destroy your car deal
+- Most people overpay by $3,000-$5,000 at dealerships
+- You can lower your car payment without refinancing
+- Bad credit doesn't mean bad deal
+"""
+    response = client.models.generate_content(
+        model='gemini-2.0-flash',
+        contents=prompt
+    )
+    return response.text.strip()
+
+
 def post_tweet(text):
     try:
-        response = twitter.create_tweet(text=text)
-        print(f"✅ Tweet posted: {text[:60]}...")
+        twitter.create_tweet(text=text)
+        print(f"✅ Twitter: {text[:60]}...")
         return True
     except Exception as e:
-        print(f"❌ Tweet failed: {e}")
+        print(f"❌ Twitter failed: {e}")
         return False
 
+
+# ── Facebook ──────────────────────────────────────────────────────────────────
+
+def post_to_facebook(caption, image_path=None):
+    if not config.FACEBOOK_PAGE_ID or config.FACEBOOK_PAGE_ID == "YOUR_FACEBOOK_PAGE_ID":
+        print("⚠️  Facebook credentials not set — skipping")
+        return False
+    try:
+        token = config.FACEBOOK_PAGE_ACCESS_TOKEN
+        page_id = config.FACEBOOK_PAGE_ID
+
+        if image_path:
+            with open(image_path, "rb") as f:
+                resp = requests.post(
+                    f"https://graph.facebook.com/v19.0/{page_id}/photos",
+                    data={"caption": caption, "access_token": token},
+                    files={"source": f}
+                )
+        else:
+            resp = requests.post(
+                f"https://graph.facebook.com/v19.0/{page_id}/feed",
+                data={"message": caption, "access_token": token}
+            )
+
+        if resp.status_code == 200:
+            print(f"✅ Facebook posted: {caption[:60]}...")
+            return True
+        else:
+            print(f"❌ Facebook failed: {resp.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Facebook error: {e}")
+        return False
+
+
+# ── Instagram ─────────────────────────────────────────────────────────────────
+
+def upload_image_to_imgur(image_path):
+    """Upload image to Imgur to get a public URL for Instagram."""
+    try:
+        with open(image_path, "rb") as f:
+            resp = requests.post(
+                "https://api.imgur.com/3/image",
+                headers={"Authorization": f"Client-ID {config.IMGUR_CLIENT_ID}"},
+                files={"image": f}
+            )
+        if resp.status_code == 200:
+            url = resp.json()["data"]["link"]
+            print(f"✅ Image uploaded to Imgur: {url}")
+            return url
+        else:
+            print(f"❌ Imgur upload failed: {resp.text}")
+            return None
+    except Exception as e:
+        print(f"❌ Imgur error: {e}")
+        return None
+
+
+def post_to_instagram(caption, image_path=None):
+    if not config.INSTAGRAM_ACCOUNT_ID or config.INSTAGRAM_ACCOUNT_ID == "YOUR_INSTAGRAM_ACCOUNT_ID":
+        print("⚠️  Instagram credentials not set — skipping")
+        return False
+    if not image_path:
+        print("⚠️  Instagram requires an image — skipping")
+        return False
+    try:
+        token = config.FACEBOOK_PAGE_ACCESS_TOKEN
+        ig_id = config.INSTAGRAM_ACCOUNT_ID
+
+        # Need a public image URL — upload to Imgur first
+        if not config.IMGUR_CLIENT_ID or config.IMGUR_CLIENT_ID == "YOUR_IMGUR_CLIENT_ID":
+            print("⚠️  Imgur not configured — skipping Instagram")
+            return False
+
+        image_url = upload_image_to_imgur(image_path)
+        if not image_url:
+            return False
+
+        # Step 1: Create media container
+        container_resp = requests.post(
+            f"https://graph.facebook.com/v19.0/{ig_id}/media",
+            data={
+                "image_url": image_url,
+                "caption": caption,
+                "access_token": token
+            }
+        )
+        if container_resp.status_code != 200:
+            print(f"❌ Instagram container failed: {container_resp.text}")
+            return False
+
+        container_id = container_resp.json()["id"]
+
+        # Step 2: Publish
+        publish_resp = requests.post(
+            f"https://graph.facebook.com/v19.0/{ig_id}/media_publish",
+            data={"creation_id": container_id, "access_token": token}
+        )
+        if publish_resp.status_code == 200:
+            print(f"✅ Instagram posted: {caption[:60]}...")
+            return True
+        else:
+            print(f"❌ Instagram publish failed: {publish_resp.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Instagram error: {e}")
+        return False
+
+
+# ── Reddit ────────────────────────────────────────────────────────────────────
 
 REDDIT_POSTS = {
     "r/askcarsales": {
@@ -169,7 +312,6 @@ def generate_reddit_post(subreddit_name):
     )
     text = response.text.strip()
 
-    # Parse title and body
     lines = text.split('\n')
     title = ""
     body_lines = []
@@ -188,20 +330,22 @@ def generate_reddit_post(subreddit_name):
 
 def post_to_reddit(subreddit_name):
     if not reddit:
-        print(f"⚠️  Skipping Reddit post to {subreddit_name} — not configured")
+        print(f"⚠️  Skipping Reddit ({subreddit_name}) — not configured")
         return False
     try:
         title, body = generate_reddit_post(subreddit_name)
         subreddit = reddit.subreddit(subreddit_name.replace("r/", ""))
         subreddit.submit(title, selftext=body)
-        print(f"✅ Reddit post submitted to {subreddit_name}: {title[:60]}...")
+        print(f"✅ Reddit posted to {subreddit_name}: {title[:60]}...")
         return True
     except Exception as e:
-        print(f"❌ Reddit post to {subreddit_name} failed: {e}")
+        print(f"❌ Reddit ({subreddit_name}) failed: {e}")
         return False
 
 
-def generate_image_prompt(product_key):
+# ── Image generation ──────────────────────────────────────────────────────────
+
+def generate_image(product_key):
     prompts = [
         "Bold infographic showing car dealership price breakdown, modern flat design, red and white colors",
         "Person celebrating saving money on car purchase, thumbs up, bright colors, cartoon style",
@@ -209,11 +353,7 @@ def generate_image_prompt(product_key):
         "Shocked face looking at car dealership invoice, comic style, bold colors",
         "Happy family driving away in new car, money floating around, vibrant illustration"
     ]
-    return random.choice(prompts)
-
-
-def generate_image(product_key):
-    prompt = generate_image_prompt(product_key)
+    prompt = random.choice(prompts)
     try:
         response = requests.post(
             "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image",
@@ -245,6 +385,8 @@ def generate_image(product_key):
         return None
 
 
+# ── Main ──────────────────────────────────────────────────────────────────────
+
 def run_agent():
     print(f"\n🚗 Frontle Agent starting — {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 50)
@@ -253,21 +395,26 @@ def run_agent():
     product = config.PRODUCTS[product_key]
     print(f"📦 Product: {product['name']}")
 
-    # Twitter
-    print("\n✍️  Generating tweet...")
+    # Generate content
+    print("\n✍️  Generating content...")
     tweet = generate_tweet(product_key)
+    caption = generate_social_caption(product_key)
     print(f"📝 Tweet: {tweet}")
-    post_tweet(tweet)
 
-    # Reddit — pick 1 random subreddit per run to avoid spam
-    reddit_targets = list(REDDIT_POSTS.keys())
-    subreddit = random.choice(reddit_targets)
+    # Generate image
+    print("\n🎨 Generating image...")
+    image_path = generate_image(product_key)
+
+    # Post everywhere
+    print("\n📤 Posting...")
+    post_tweet(tweet)
+    post_to_facebook(caption, image_path)
+    post_to_instagram(caption, image_path)
+
+    # Reddit — 1 random subreddit per run
+    subreddit = random.choice(list(REDDIT_POSTS.keys()))
     print(f"\n📢 Posting to {subreddit}...")
     post_to_reddit(subreddit)
-
-    # Image
-    print("\n🎨 Generating image...")
-    generate_image(product_key)
 
     print("\n" + "=" * 50)
     print("✅ Agent run complete\n")
