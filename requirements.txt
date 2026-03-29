@@ -1,4 +1,4 @@
-google-genai
+groq
 tweepy
 requests
 praw

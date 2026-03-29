@@ -26,7 +26,7 @@ jobs:
       - name: Write config from secrets
         run: |
           cat > config.py << 'EOF'
-          GEMINI_API_KEY = "${{ secrets.GEMINI_API_KEY }}"
+          GROQ_API_KEY = "${{ secrets.GROQ_API_KEY }}"
           STABILITY_API_KEY = "${{ secrets.STABILITY_API_KEY }}"
 
           TWITTER_API_KEY = "${{ secrets.TWITTER_API_KEY }}"

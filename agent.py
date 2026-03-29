@@ -1,4 +1,4 @@
-from google import genai
+from groq import Groq
 import tweepy
 import requests
 import random
@@ -6,8 +6,8 @@ import datetime
 import base64
 import config
 
-# Setup Gemini
-client = genai.Client(api_key=config.GEMINI_API_KEY)
+# Setup Groq
+client = Groq(api_key=config.GROQ_API_KEY)
 
 # Setup Twitter
 twitter = tweepy.Client(
@@ -68,11 +68,11 @@ Topic ideas to pick from:
 - You can lower your car payment without refinancing
 - Bad credit doesn't mean bad deal
 """
-    response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=prompt
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
     )
-    return response.text.strip()
+    return response.choices[0].message.content.strip()
 
 
 def generate_social_caption(product_key):
@@ -101,11 +101,11 @@ Topic ideas:
 - You can lower your car payment without refinancing
 - Bad credit doesn't mean bad deal
 """
-    response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=prompt
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
     )
-    return response.text.strip()
+    return response.choices[0].message.content.strip()
 
 
 def post_tweet(text):
@@ -300,11 +300,11 @@ def generate_reddit_post(subreddit_name):
     product = config.PRODUCTS[product_key]
     prompt = config_data["prompt"].format(url=product["url"])
 
-    response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=prompt
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
     )
-    text = response.text.strip()
+    text = response.choices[0].message.content.strip()
 
     lines = text.split('\n')
     title = ""
