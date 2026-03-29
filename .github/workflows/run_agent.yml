@@ -48,6 +48,10 @@ jobs:
           CLOUDINARY_API_KEY = "${{ secrets.CLOUDINARY_API_KEY }}"
           CLOUDINARY_API_SECRET = "${{ secrets.CLOUDINARY_API_SECRET }}"
 
+          YOUTUBE_CLIENT_ID = "${{ secrets.YOUTUBE_CLIENT_ID }}"
+          YOUTUBE_CLIENT_SECRET = "${{ secrets.YOUTUBE_CLIENT_SECRET }}"
+          YOUTUBE_REFRESH_TOKEN = "${{ secrets.YOUTUBE_REFRESH_TOKEN }}"
+
           APP_NAME = "Frontle"
           APP_URL = "https://frontle.com"
           SUBPRIME_URL = "https://prime.frontle.com"

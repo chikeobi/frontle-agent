@@ -379,6 +379,60 @@ def generate_image(product_key):
         return None
 
 
+# ── YouTube ───────────────────────────────────────────────────────────────
+
+def post_to_youtube(caption, image_path=None):
+    if not image_path:
+        print("⚠️  YouTube requires an image — skipping")
+        return False
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaFileUpload
+        import moviepy.editor as mp
+        import tempfile, os
+
+        # Build a short video from the image
+        clip = mp.ImageClip(image_path, duration=15)
+        clip = clip.set_fps(1)
+        video_path = image_path.replace(".png", ".mp4")
+        clip.write_videofile(video_path, codec="libx264", audio=False, logger=None)
+
+        creds = Credentials(
+            token=None,
+            refresh_token=config.YOUTUBE_REFRESH_TOKEN,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=config.YOUTUBE_CLIENT_ID,
+            client_secret=config.YOUTUBE_CLIENT_SECRET,
+            scopes=["https://www.googleapis.com/auth/youtube.upload"]
+        )
+
+        youtube = build("youtube", "v3", credentials=creds)
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body={
+                "snippet": {
+                    "title": caption[:100],
+                    "description": caption,
+                    "tags": ["car buying", "save money", "dealership", "frontle"],
+                    "categoryId": "22"
+                },
+                "status": {
+                    "privacyStatus": "public",
+                    "selfDeclaredMadeForKids": False
+                }
+            },
+            media_body=MediaFileUpload(video_path, chunksize=-1, resumable=True)
+        )
+        response = request.execute()
+        print(f"✅ YouTube posted: {response.get('id')}")
+        os.remove(video_path)
+        return True
+    except Exception as e:
+        print(f"❌ YouTube failed: {e}")
+        return False
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run_agent():
@@ -409,6 +463,10 @@ def run_agent():
     subreddit = random.choice(list(REDDIT_POSTS.keys()))
     print(f"\n📢 Posting to {subreddit}...")
     post_to_reddit(subreddit)
+
+    # YouTube
+    print("\n▶️  Posting to YouTube...")
+    post_to_youtube(caption, image_path)
 
     print("\n" + "=" * 50)
     print("✅ Agent run complete\n")
