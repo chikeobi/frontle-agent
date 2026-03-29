@@ -79,22 +79,46 @@ Rules:
     return response.choices[0].message.content.strip()
 
 
-def generate_social_caption(product_key):
-    """Longer caption for Facebook/Instagram."""
+def generate_facebook_caption(product_key):
     product = config.PRODUCTS[product_key]
-
     prompt = f"""
-You are writing a Facebook/Instagram caption for {config.APP_NAME}, an app that helps car buyers.
+You are writing a Facebook post for {config.APP_NAME}, an app that helps car buyers.
 
 BRAND VOICE GUIDE:
 {BRAND_VOICE}
 
-Write a caption about how {product['name']} helps people {product['hook']}.
+Write a Facebook post about how {product['name']} helps people {product['hook']}.
 
 Rules:
-- 3-5 sentences max
+- 3-5 sentences, storytelling style, like you're talking to a friend
 - End with this URL: {product['url']}
-- Include 3-5 relevant hashtags at the end
+- Include 2-3 relevant hashtags at the end
+- Follow the brand voice guide above exactly
+- Do NOT use quotes around the post
+- Output only the post text, nothing else
+"""
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content.strip()
+
+
+def generate_instagram_caption(product_key):
+    product = config.PRODUCTS[product_key]
+    prompt = f"""
+You are writing an Instagram caption for {config.APP_NAME}, an app that helps car buyers.
+
+BRAND VOICE GUIDE:
+{BRAND_VOICE}
+
+Write an Instagram caption about how {product['name']} helps people {product['hook']}.
+
+Rules:
+- Hook in the first line to stop the scroll
+- 2-3 short punchy sentences
+- End with this URL: {product['url']}
+- Include 5-8 relevant hashtags at the end
 - Follow the brand voice guide above exactly
 - Do NOT use quotes around the caption
 - Output only the caption text, nothing else
@@ -104,6 +128,38 @@ Rules:
         messages=[{"role": "user", "content": prompt}]
     )
     return response.choices[0].message.content.strip()
+
+
+def generate_youtube_title_and_description(product_key):
+    product = config.PRODUCTS[product_key]
+    prompt = f"""
+You are writing a YouTube Shorts title and description for {config.APP_NAME}, an app that helps car buyers.
+
+BRAND VOICE GUIDE:
+{BRAND_VOICE}
+
+Write a YouTube title and description about how {product['name']} helps people {product['hook']}.
+
+Rules:
+- Title: under 60 characters, curiosity-driven, SEO-friendly
+- Description: 2-3 sentences, end with {product['url']}
+- Follow the brand voice guide above exactly
+- Output in this exact format:
+TITLE: [title here]
+DESCRIPTION: [description here]
+"""
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    text = response.choices[0].message.content.strip()
+    title, description = "", ""
+    for line in text.split("\n"):
+        if line.startswith("TITLE:"):
+            title = line.replace("TITLE:", "").strip()
+        elif line.startswith("DESCRIPTION:"):
+            description = line.replace("DESCRIPTION:", "").strip()
+    return title, description
 
 
 def post_tweet(text):
@@ -379,7 +435,7 @@ def generate_image(product_key):
 
 # ── YouTube ───────────────────────────────────────────────────────────────
 
-def post_to_youtube(caption, image_path=None):
+def post_to_youtube(caption, image_path=None, title=None):
     if not image_path:
         print("⚠️  YouTube requires an image — skipping")
         return False
@@ -410,7 +466,7 @@ def post_to_youtube(caption, image_path=None):
             part="snippet,status",
             body={
                 "snippet": {
-                    "title": caption[:100],
+                    "title": (title or caption)[:100],
                     "description": caption,
                     "tags": ["car buying", "save money", "dealership", "frontle"],
                     "categoryId": "22"
@@ -482,7 +538,9 @@ def run_agent():
     # Generate content
     print("\n✍️  Generating content...")
     tweet = generate_tweet(product_key)
-    caption = generate_social_caption(product_key)
+    fb_caption = generate_facebook_caption(product_key)
+    ig_caption = generate_instagram_caption(product_key)
+    yt_title, yt_description = generate_youtube_title_and_description(product_key)
     print(f"📝 Tweet: {tweet}")
 
     # Generate image
@@ -495,12 +553,14 @@ def run_agent():
     if telegram_approve("Twitter", tweet):
         post_tweet(tweet)
 
-    if telegram_approve("Facebook/Instagram", caption):
-        post_to_facebook(caption, image_path)
-        post_to_instagram(caption, image_path)
+    if telegram_approve("Facebook", fb_caption):
+        post_to_facebook(fb_caption, image_path)
 
-    if telegram_approve("YouTube", caption[:200]):
-        post_to_youtube(caption, image_path)
+    if telegram_approve("Instagram", ig_caption):
+        post_to_instagram(ig_caption, image_path)
+
+    if telegram_approve("YouTube", f"Title: {yt_title}\n\n{yt_description}"):
+        post_to_youtube(yt_description, image_path, title=yt_title)
 
     # Reddit — 1 random subreddit per run
     subreddit = random.choice(list(REDDIT_POSTS.keys()))
