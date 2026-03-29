@@ -44,7 +44,9 @@ jobs:
 
           INSTAGRAM_ACCOUNT_ID = "${{ secrets.INSTAGRAM_ACCOUNT_ID }}"
 
-          IMGUR_CLIENT_ID = "${{ secrets.IMGUR_CLIENT_ID }}"
+          CLOUDINARY_CLOUD_NAME = "${{ secrets.CLOUDINARY_CLOUD_NAME }}"
+          CLOUDINARY_API_KEY = "${{ secrets.CLOUDINARY_API_KEY }}"
+          CLOUDINARY_API_SECRET = "${{ secrets.CLOUDINARY_API_SECRET }}"
 
           APP_NAME = "Frontle"
           APP_URL = "https://frontle.com"

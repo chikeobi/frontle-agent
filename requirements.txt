@@ -2,3 +2,4 @@ google-genai
 tweepy
 requests
 praw
+cloudinary

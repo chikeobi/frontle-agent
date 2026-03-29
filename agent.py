@@ -154,24 +154,22 @@ def post_to_facebook(caption, image_path=None):
 
 # ── Instagram ─────────────────────────────────────────────────────────────────
 
-def upload_image_to_imgur(image_path):
-    """Upload image to Imgur to get a public URL for Instagram."""
+def upload_image_to_cloudinary(image_path):
+    """Upload image to Cloudinary to get a public URL for Instagram."""
     try:
-        with open(image_path, "rb") as f:
-            resp = requests.post(
-                "https://api.imgur.com/3/image",
-                headers={"Authorization": f"Client-ID {config.IMGUR_CLIENT_ID}"},
-                files={"image": f}
-            )
-        if resp.status_code == 200:
-            url = resp.json()["data"]["link"]
-            print(f"✅ Image uploaded to Imgur: {url}")
-            return url
-        else:
-            print(f"❌ Imgur upload failed: {resp.text}")
-            return None
+        import cloudinary
+        import cloudinary.uploader
+        cloudinary.config(
+            cloud_name=config.CLOUDINARY_CLOUD_NAME,
+            api_key=config.CLOUDINARY_API_KEY,
+            api_secret=config.CLOUDINARY_API_SECRET
+        )
+        result = cloudinary.uploader.upload(image_path)
+        url = result["secure_url"]
+        print(f"✅ Image uploaded to Cloudinary: {url}")
+        return url
     except Exception as e:
-        print(f"❌ Imgur error: {e}")
+        print(f"❌ Cloudinary error: {e}")
         return None
 
 
@@ -186,12 +184,8 @@ def post_to_instagram(caption, image_path=None):
         token = config.FACEBOOK_PAGE_ACCESS_TOKEN
         ig_id = config.INSTAGRAM_ACCOUNT_ID
 
-        # Need a public image URL — upload to Imgur first
-        if not config.IMGUR_CLIENT_ID or config.IMGUR_CLIENT_ID == "YOUR_IMGUR_CLIENT_ID":
-            print("⚠️  Imgur not configured — skipping Instagram")
-            return False
-
-        image_url = upload_image_to_imgur(image_path)
+        # Need a public image URL — upload to Cloudinary first
+        image_url = upload_image_to_cloudinary(image_path)
         if not image_url:
             return False
 
