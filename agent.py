@@ -443,12 +443,12 @@ def post_to_youtube(caption, image_path=None, title=None):
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
-        import moviepy.editor as mp
-        import tempfile, os
+        from moviepy import ImageClip
+        import os
 
         # Build a short video from the image
-        clip = mp.ImageClip(image_path, duration=15)
-        clip = clip.set_fps(1)
+        clip = ImageClip(image_path, duration=15)
+        clip = clip.with_fps(1)
         video_path = image_path.replace(".png", ".mp4")
         clip.write_videofile(video_path, codec="libx264", audio=False, logger=None)
 
