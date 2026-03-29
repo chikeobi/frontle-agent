@@ -550,9 +550,6 @@ def run_agent():
     # Send for approval and post
     print("\n📤 Sending for Telegram approval...")
 
-    if telegram_approve("Twitter", tweet):
-        post_tweet(tweet)
-
     if telegram_approve("Facebook", fb_caption):
         post_to_facebook(fb_caption, image_path)
 
