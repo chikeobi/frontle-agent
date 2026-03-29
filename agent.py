@@ -4,10 +4,22 @@ import requests
 import random
 import datetime
 import base64
+import time
+import os
 import config
 
 # Setup Groq
 client = Groq(api_key=config.GROQ_API_KEY)
+
+# Load brand voice
+def load_brand_voice():
+    try:
+        with open("brand_voice.md", "r") as f:
+            return f.read()
+    except:
+        return ""
+
+BRAND_VOICE = load_brand_voice()
 
 # Setup Twitter
 twitter = tweepy.Client(
@@ -43,30 +55,22 @@ def pick_product():
 
 def generate_tweet(product_key):
     product = config.PRODUCTS[product_key]
-    tones = ["bold and confrontational", "funny and relatable", "educational and helpful"]
-    tone = random.choice(tones)
 
     prompt = f"""
-You are a viral social media expert for {config.APP_NAME}, an app that helps car buyers.
+You are writing a tweet for {config.APP_NAME}, an app that helps car buyers.
 
-Write a single tweet that is {tone} about how {product['name']} helps people {product['hook']}.
+BRAND VOICE GUIDE:
+{BRAND_VOICE}
+
+Write a single tweet about how {product['name']} helps people {product['hook']}.
 
 Rules:
 - Maximum 240 characters including the URL
-- No hashtags longer than 2 words
 - Include 1-2 relevant hashtags
 - End with this URL: {product['url']}
-- Make it punchy and shareable
+- Follow the brand voice guide above exactly
 - Do NOT use quotes around the tweet
 - Output only the tweet text, nothing else
-
-Topic ideas to pick from:
-- Dealerships markup prices by thousands
-- Finance managers are trained to upsell you
-- Your credit score doesn't have to destroy your car deal
-- Most people overpay by $3,000-$5,000 at dealerships
-- You can lower your car payment without refinancing
-- Bad credit doesn't mean bad deal
 """
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -78,28 +82,22 @@ Topic ideas to pick from:
 def generate_social_caption(product_key):
     """Longer caption for Facebook/Instagram."""
     product = config.PRODUCTS[product_key]
-    tones = ["bold and honest", "helpful and educational", "relatable and conversational"]
-    tone = random.choice(tones)
 
     prompt = f"""
-You are a social media expert for {config.APP_NAME}, an app that helps car buyers.
+You are writing a Facebook/Instagram caption for {config.APP_NAME}, an app that helps car buyers.
 
-Write a {tone} Facebook/Instagram caption about how {product['name']} helps people {product['hook']}.
+BRAND VOICE GUIDE:
+{BRAND_VOICE}
+
+Write a caption about how {product['name']} helps people {product['hook']}.
 
 Rules:
 - 3-5 sentences max
 - End with this URL: {product['url']}
 - Include 3-5 relevant hashtags at the end
+- Follow the brand voice guide above exactly
 - Do NOT use quotes around the caption
 - Output only the caption text, nothing else
-
-Topic ideas:
-- Dealerships markup prices by thousands
-- Finance managers are trained to upsell you
-- Your credit score doesn't have to destroy your car deal
-- Most people overpay by $3,000-$5,000 at dealerships
-- You can lower your car payment without refinancing
-- Bad credit doesn't mean bad deal
 """
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -433,6 +431,44 @@ def post_to_youtube(caption, image_path=None):
         return False
 
 
+# ── Telegram Approval ─────────────────────────────────────────────────────
+
+def telegram_send(text):
+    requests.post(
+        f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
+        data={"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
+    )
+
+def telegram_approve(content_type, text, timeout_minutes=15):
+    """Send content for approval. Returns True if approved, False if rejected/timeout."""
+    msg = f"📋 <b>APPROVAL NEEDED — {content_type}</b>\n\n{text}\n\n✅ Reply <b>YES</b> to post\n❌ Reply <b>NO</b> to skip\n\n⏱ You have {timeout_minutes} minutes"
+    telegram_send(msg)
+
+    deadline = time.time() + (timeout_minutes * 60)
+    last_update_id = None
+
+    while time.time() < deadline:
+        resp = requests.get(
+            f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/getUpdates",
+            params={"timeout": 30, "offset": last_update_id}
+        ).json()
+
+        for update in resp.get("result", []):
+            last_update_id = update["update_id"] + 1
+            msg_text = update.get("message", {}).get("text", "").strip().upper()
+            if msg_text == "YES":
+                telegram_send(f"✅ Approved! Posting {content_type}...")
+                return True
+            elif msg_text == "NO":
+                telegram_send(f"❌ Skipped {content_type}.")
+                return False
+
+        time.sleep(10)
+
+    telegram_send(f"⏱ Timeout — skipping {content_type}.")
+    return False
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run_agent():
@@ -453,20 +489,24 @@ def run_agent():
     print("\n🎨 Generating image...")
     image_path = generate_image(product_key)
 
-    # Post everywhere
-    print("\n📤 Posting...")
-    post_tweet(tweet)
-    post_to_facebook(caption, image_path)
-    post_to_instagram(caption, image_path)
+    # Send for approval and post
+    print("\n📤 Sending for Telegram approval...")
+
+    if telegram_approve("Twitter", tweet):
+        post_tweet(tweet)
+
+    if telegram_approve("Facebook/Instagram", caption):
+        post_to_facebook(caption, image_path)
+        post_to_instagram(caption, image_path)
+
+    if telegram_approve("YouTube", caption[:200]):
+        post_to_youtube(caption, image_path)
 
     # Reddit — 1 random subreddit per run
     subreddit = random.choice(list(REDDIT_POSTS.keys()))
-    print(f"\n📢 Posting to {subreddit}...")
-    post_to_reddit(subreddit)
-
-    # YouTube
-    print("\n▶️  Posting to YouTube...")
-    post_to_youtube(caption, image_path)
+    reddit_title, reddit_body = generate_reddit_post(subreddit) if reddit else ("", "")
+    if reddit and telegram_approve(f"Reddit ({subreddit})", f"{reddit_title}\n\n{reddit_body[:300]}..."):
+        post_to_reddit(subreddit)
 
     print("\n" + "=" * 50)
     print("✅ Agent run complete\n")
